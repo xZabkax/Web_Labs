@@ -1,5 +1,4 @@
 <?php
-// Создание папок категорий при первом запуске
 $categories = ['Продукты_питания', 'Напитки', 'Деликатесы'];
 foreach ($categories as $category) {
     if (!is_dir($category)) {
@@ -7,24 +6,31 @@ foreach ($categories as $category) {
     }
 }
 
-// Обработка формы
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = $_POST['email'] ?? '';
     $category = $_POST['category'] ?? '';
     $title = $_POST['title'] ?? '';
     $content = $_POST['content'] ?? '';
 
-    // Валидация данных
-    if (filter_var($email, FILTER_VALIDATE_EMAIL) && in_array($category, $categories) && !empty($title) && !empty($content)) {
-        // Очистка названия файла
-        $filename = preg_replace('/[^a-zA-Zа-яА-Я0-9_\-]/u', '_', $title);
-        $filename = mb_substr($filename, 0, 50) . '.txt';
+    $isValid = filter_var($email, FILTER_VALIDATE_EMAIL)
+        && in_array($category, $categories)
+        && !empty($title)
+        && !empty($content);
 
-        // Сохранение файла
+    if ($isValid) {
+        $filename = preg_replace('/[^a-zA-Zа-яА-Я0-9_\-]/u', '_', $title);
+        $filename = substr($filename, 0, 50) . '.txt';
         $filepath = "$category/$filename";
+
         if (!file_exists($filepath)) {
-            file_put_contents($filepath, $content);
-            $message = 'Объявление успешно добавлено!';
+            $handle = fopen($filepath, 'w');
+            if ($handle) {
+                fwrite($handle, $content);
+                fclose($handle);
+                $message = 'Объявление успешно добавлено!';
+            } else {
+                $error = 'Ошибка создания файла';
+            }
         } else {
             $error = 'Объявление с таким заголовком уже существует';
         }
@@ -33,17 +39,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Получение списка объявлений
 $ads = [];
 foreach ($categories as $category) {
-    $files = glob("$category/*.txt");
-    foreach ($files as $file) {
-        $ads[] = [
-            'category' => $category,
-            'title' => basename($file, '.txt'),
-            'content' => file_get_contents($file),
-            'created' => date("Y-m-d H:i:s", filemtime($file))
-        ];
+    $dir = opendir($category);
+    if ($dir) {
+        while (($file = readdir($dir)) !== false) {
+            if (pathinfo($file, PATHINFO_EXTENSION) === 'txt') {
+                $filepath = "$category/$file";
+
+                $content = '';
+                $handle = fopen($filepath, 'r');
+                if ($handle) {
+                    while (!feof($handle)) {
+                        $content .= fgets($handle);
+                    }
+                    fclose($handle);
+                }
+
+                $ads[] = [
+                    'category' => $category,
+                    'title' => pathinfo($file, PATHINFO_FILENAME),
+                    'content' => $content,
+                    'created' => date("Y-m-d H:i:s", filemtime($filepath))
+                ];
+            }
+        }
+        closedir($dir);
     }
 }
 ?>
@@ -65,11 +86,11 @@ foreach ($categories as $category) {
     <h1>Добавить объявление</h1>
 
     <?php if(isset($message)): ?>
-        <div style="color: green;"><?= $message ?></div>
+        <div style="color: green;"><?= htmlspecialchars($message) ?></div>
     <?php endif; ?>
 
     <?php if(isset($error)): ?>
-        <div style="color: red;"><?= $error ?></div>
+        <div style="color: red;"><?= htmlspecialchars($error) ?></div>
     <?php endif; ?>
 
     <form method="POST">
@@ -82,7 +103,9 @@ foreach ($categories as $category) {
             <label>Категория:</label>
             <select name="category" required>
                 <?php foreach ($categories as $cat): ?>
-                    <option value="<?= $cat ?>"><?= str_replace('_', ' ', $cat) ?></option>
+                    <option value="<?= htmlspecialchars($cat) ?>">
+                        <?= str_replace('_', ' ', htmlspecialchars($cat)) ?>
+                    </option>
                 <?php endforeach; ?>
             </select>
         </div>
@@ -114,10 +137,10 @@ foreach ($categories as $category) {
             <tbody>
             <?php foreach ($ads as $ad): ?>
                 <tr>
-                    <td><?= str_replace('_', ' ', $ad['category']) ?></td>
-                    <td><?= $ad['title'] ?></td>
+                    <td><?= str_replace('_', ' ', htmlspecialchars($ad['category'])) ?></td>
+                    <td><?= htmlspecialchars($ad['title']) ?></td>
                     <td><?= nl2br(htmlspecialchars($ad['content'])) ?></td>
-                    <td><?= $ad['created'] ?></td>
+                    <td><?= htmlspecialchars($ad['created']) ?></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>
